@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multiplication Specialist V53</title>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; background: #ecf0f1; padding: 20px; }
+        .container { background: white; padding: 25px; border: 3px solid #2c3e50; border-radius: 12px; width: 95%; max-width: 900px; box-shadow: 10px 10px 0px #bdc3c7; }
+        .math-grid { font-size: 2.5rem; font-weight: bold; margin: 20px auto; border-collapse: collapse; }
+        .math-grid td { width: 90px; height: 90px; text-align: center; vertical-align: middle; border: 1px solid #ddd; position: relative; }
+        .regroup-row td { font-size: 1.8rem; color: #e67e22; height: 50px; border: none !important; vertical-align: bottom; }
+        .add-carry-row td { font-size: 1.5rem; color: #8e44ad; height: 40px; border: none !important; vertical-align: bottom; }
+        .op-cell { border-bottom: 5px solid black !important; }
+        .sum-line { border-top: 5px solid black !important; }
+        .active-digit { background-color: #fff9c4; border: 5px solid #f1c40f !important; }
+        .carry-active { background-color: #e8f8f5; border: 3px solid #27ae60 !important; }
+        .controls { font-family: sans-serif; text-align: center; margin-top: 20px; padding: 15px; background: #fff9e6; border: 2px dashed #f1c40f; border-radius: 10px; }
+        input { font-size: 2.2rem; width: 150px; text-align: center; border: 3px solid #333; border-radius: 8px; }
+        .btn-go { background: #27ae60; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
+        .sub-input-box { display: none; margin: 10px 0; background: #eee; padding: 15px; border-radius: 8px; border: 1px solid #ccc; }
+        #msg { color: #c0392b; font-size: 1.2rem; font-weight: bold; margin-top: 10px; min-height: 1.5em; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="setup-screen" style="text-align:center;">
+        <h2>✖️ Multiplication Specialist V53</h2>
+        <input type="number" id="v-n1" placeholder="Top"> × <input type="number" id="v-n2" placeholder="Bottom">
+        <br><br><button class="btn-go" onclick="begin()">START</button>
+    </div>
+
+    <div id="work-screen" style="display:none;">
+        <table class="math-grid" id="main-grid"></table>
+        <div class="controls">
+            <div id="prompt" style="font-weight:bold; color:#2c3e50; margin-bottom: 10px; font-size: 1.3rem;"></div>
+            <div id="interaction-zone">
+                <input type="number" id="ans-input" autocomplete="off">
+                <button class="btn-go" onclick="validate()">CHECK</button>
+            </div>
+            <div id="sub-step-zone" class="sub-input-box">
+                <p id="sub-step-text" style="font-weight:bold;"></p>
+                <input type="number" id="sub-ans">
+                <button class="btn-go" onclick="handleSubStep()">OK</button>
+            </div>
+            <div id="msg"></div>
+            <hr><button onclick="location.reload()">NEW PROBLEM</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let topNums=[], botNums=[], currentCol=0, maxCols=0, activeCarry=0;
+    let currentRow=1, phase='work', subStepMode=null, pendingVal=0, savedAns={}, multCarries={}, addCarries={};
+
+    function begin(){
+        let s1=document.getElementById('v-n1').value, s2=document.getElementById('v-n2').value;
+        if(!s1 || !s2) return;
+        maxCols = Math.max(s1.length, s2.length) + 4;
+        topNums = s1.padStart(maxCols, ' ').split('');
+        botNums = s2.padStart(maxCols, ' ').split('');
+        currentCol=maxCols-1; phase='work'; currentRow=1; activeCarry=0;
+        savedAns = {}; multCarries = {}; addCarries = {};
+        document.getElementById('setup-screen').style.display='none';
+        document.getElementById('work-screen').style.display='block';
+        renderGrid(); refreshPrompt();
+    }
+
+    function renderGrid(){
+        let h=`<tr class="regroup-row">`;
+        for(let i=0; i<maxCols; i++) h+=`<td id="r${i}">${multCarries[i] || ''}</td>`;
+        h+=`</tr><tr><td></td>`;
+        for(let i=1; i<maxCols; i++) h+=`<td id="t${i}">${topNums[i]===' '?'':topNums[i]}</td>`;
+        h+=`</tr><tr class="op-cell"><td>×</td>`;
+        for(let i=1; i<maxCols; i++) h+=`<td id="b${i}">${botNums[i]===' '?'':botNums[i]}</td>`;
+        h+=`</tr><tr><td></td>`;
+        for(let i=1; i<maxCols; i++) h+=`<td id="ans1-${i}">${savedAns['ans1-'+i]||''}</td>`;
+        if(botNums.filter(x=>x!==' ').length > 1){
+            h+=`</tr><tr class="add-carry-row"><td></td>`;
+            for(let i=1; i<maxCols; i++) h+=`<td id="ac${i}">${addCarries[i] || ''}</td>`;
+            h+=`</tr><tr><td>+</td>`;
+            for(let i=1; i<maxCols; i++) h+=`<td id="ans2-${i}">${savedAns['ans2-'+i]||''}</td>`;
+            h+=`</tr><tr class="sum-line"><td></td>`;
+            for(let i=1; i<maxCols; i++) h+=`<td id="fin-${i}">${savedAns['fin-'+i]||''}</td>`;
+        }
+        document.getElementById('main-grid').innerHTML=h;
+    }
+
+    function refreshPrompt(){
+        document.querySelectorAll('td').forEach(td=>td.classList.remove('active-digit', 'carry-active'));
+        document.getElementById('ans-input').value="";
+        document.getElementById('msg').innerText = "";
+        let bIdx = (currentRow===1)? maxCols-1 : maxCols-2;
+        if(phase==='work'){
+            document.getElementById('t'+currentCol).classList.add('active-digit');
+            document.getElementById('b'+bIdx).classList.add('active-digit');
+            if(multCarries[currentCol]) document.getElementById('r'+currentCol).classList.add('carry-active');
+            document.getElementById('prompt').innerText = `Multiply column...`;
+        } else {
+            document.getElementById('ans1-'+currentCol).classList.add('active-digit');
+            document.getElementById('ans2-'+currentCol).classList.add('active-digit');
+            if(addCarries[currentCol]) document.getElementById('ac'+currentCol).classList.add('carry-active');
+            document.getElementById('prompt').innerText = "Add the columns...";
+        }
+    }
+
+    function validate(){
+        let val = parseInt(document.getElementById('ans-input').value);
+        if(isNaN(val)) return;
+        let target, baseVal;
+        
+        if(phase==='add'){
+            let v1 = parseInt(savedAns['ans1-'+currentCol])||0;
+            let v2 = parseInt(savedAns['ans2-'+currentCol])||0;
+            baseVal = v1 + v2;
+            target = baseVal + activeCarry;
+        } else {
+            let bIdx = (currentRow===1)? maxCols-1 : maxCols-2;
+            let v1 = parseInt(topNums[currentCol])||0;
+            let v2 = parseInt(botNums[bIdx])||0;
+            baseVal = v1 * v2;
+            target = baseVal + activeCarry;
+        }
+
+        if(val === target) {
+            handleSuccess(val);
+        } else if (activeCarry > 0 && val === baseVal) {
+            document.getElementById('msg').innerText = "Don't forget to add the carried number!";
+        } else {
+            document.getElementById('msg').innerText = "Not quite. Check your math.";
+        }
+    }
+
+    function handleSuccess(val){
+        let isFinalDigit;
+        if(phase === 'add'){
+            // Stop if no more digits in the rows AND no more carries to process
+            let remaining1 = Object.keys(savedAns).some(k => k.startsWith('ans1-') && parseInt(k.split('-')[1]) < currentCol && savedAns[k] !== "");
+            let remaining2 = Object.keys(savedAns).some(k => k.startsWith('ans2-') && parseInt(k.split('-')[1]) < currentCol && savedAns[k] !== "");
+            let remainingCarry = Object.keys(addCarries).some(k => parseInt(k) < currentCol);
+            isFinalDigit = !remaining1 && !remaining2 && !remainingCarry;
+        } else {
+            isFinalDigit = (topNums.slice(0, currentCol).join('').trim().length === 0);
+        }
+
+        if(val >= 10 && !isFinalDigit) {
+            pendingVal = val;
+            subStepMode = "carry";
+            triggerSubStep(`Result is ${val}. What do you carry?`);
+        } else { finalize(val); }
+    }
+
+    function triggerSubStep(txt){
+        document.getElementById('sub-step-text').innerText=txt;
+        document.getElementById('interaction-zone').style.display='none';
+        document.getElementById('sub-step-zone').style.display='block';
+    }
+
+    function handleSubStep(){
+        let sVal = parseInt(document.getElementById('sub-ans').value);
+        if(subStepMode === "carry"){
+            let carry = Math.floor(pendingVal/10);
+            if(sVal === carry){
+                if(phase === 'add') addCarries[currentCol-1] = carry;
+                else multCarries[currentCol-1] = carry;
+                finalize(pendingVal % 10);
+                exitSubStep();
+            } else { document.getElementById('msg').innerText = `You should carry the ${carry}.`; }
+        } else if(subStepMode === "placeholder"){
+            if(sVal === 0){
+                savedAns['ans2-'+(maxCols-1)] = "0";
+                currentRow=2; currentCol=maxCols-1; activeCarry=0; multCarries={};
+                exitSubStep(); renderGrid(); refreshPrompt();
+            }
+        }
+    }
+
+    function finalize(v){
+        let rowTag = (phase==='add') ? 'fin-' : 'ans'+currentRow+'-';
+        if(v >= 10){
+            savedAns[rowTag+currentCol] = v % 10;
+            savedAns[rowTag+(currentCol-1)] = Math.floor(v/10);
+        } else { savedAns[rowTag+currentCol] = v.toString(); }
+        
+        renderGrid();
+
+        // Re-check for end of phase
+        let more;
+        if(phase==='work'){
+            more = (topNums.slice(0, currentCol).join('').trim().length > 0);
+        } else {
+            let hasMoreDigits = false;
+            for(let i=1; i<currentCol; i++){
+                if(savedAns['ans1-'+i] || savedAns['ans2-'+i] || addCarries[i]) hasMoreDigits = true;
+            }
+            more = hasMoreDigits;
+        }
+
+        if(!more) { handleEndOfRow(); } 
+        else {
+            currentCol--;
+            activeCarry = (phase === 'add') ? (addCarries[currentCol] || 0) : (multCarries[currentCol] || 0);
+            refreshPrompt();
+        }
+    }
+
+    function handleEndOfRow(){
+        if(currentRow===1 && botNums.filter(x=>x!==' ').length > 1){
+            subStepMode="placeholder";
+            triggerSubStep("Place your placeholder zero.");
+        } else if(currentRow===2 && phase==='work'){
+            phase='add'; currentCol=maxCols-1; activeCarry=0; 
+            renderGrid(); refreshPrompt();
+        } else {
+            document.getElementById('prompt').innerText="Well Done! Problem Complete!";
+            document.getElementById('interaction-zone').style.display='none';
+            document.getElementById('msg').innerText = "⭐ Great work on your multiplication! ⭐";
+        }
+    }
+
+    function exitSubStep(){
+        document.getElementById('sub-step-zone').style.display='none';
+        document.getElementById('interaction-zone').style.display='block';
+        document.getElementById('sub-ans').value="";
+        document.getElementById('msg').innerText = "";
+    }
+</script>
+</body>
+</html>
