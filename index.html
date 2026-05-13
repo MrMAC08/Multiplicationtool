@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Multiplication Specialist V53</title>
+    <title>Multiplication Specialist V54</title>
     <style>
         body { font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; background: #ecf0f1; padding: 20px; }
         .container { background: white; padding: 25px; border: 3px solid #2c3e50; border-radius: 12px; width: 95%; max-width: 900px; box-shadow: 10px 10px 0px #bdc3c7; }
@@ -24,7 +24,7 @@
 <body>
 <div class="container">
     <div id="setup-screen" style="text-align:center;">
-        <h2>✖️ Multiplication Specialist V53</h2>
+        <h2>✖️ Multiplication Specialist V54</h2>
         <input type="number" id="v-n1" placeholder="Top"> × <input type="number" id="v-n2" placeholder="Bottom">
         <br><br><button class="btn-go" onclick="begin()">START</button>
     </div>
@@ -94,12 +94,12 @@
             document.getElementById('t'+currentCol).classList.add('active-digit');
             document.getElementById('b'+bIdx).classList.add('active-digit');
             if(multCarries[currentCol]) document.getElementById('r'+currentCol).classList.add('carry-active');
-            document.getElementById('prompt').innerText = `Multiply column...`;
+            document.getElementById('prompt').innerText = `Solve column...`;
         } else {
             document.getElementById('ans1-'+currentCol).classList.add('active-digit');
             document.getElementById('ans2-'+currentCol).classList.add('active-digit');
             if(addCarries[currentCol]) document.getElementById('ac'+currentCol).classList.add('carry-active');
-            document.getElementById('prompt').innerText = "Add the columns...";
+            document.getElementById('prompt').innerText = "Add the column...";
         }
     }
 
@@ -126,18 +126,18 @@
         } else if (activeCarry > 0 && val === baseVal) {
             document.getElementById('msg').innerText = "Don't forget to add the carried number!";
         } else {
-            document.getElementById('msg').innerText = "Not quite. Check your math.";
+            document.getElementById('msg').innerText = "Try again.";
         }
     }
 
     function handleSuccess(val){
         let isFinalDigit;
         if(phase === 'add'){
-            // Stop if no more digits in the rows AND no more carries to process
-            let remaining1 = Object.keys(savedAns).some(k => k.startsWith('ans1-') && parseInt(k.split('-')[1]) < currentCol && savedAns[k] !== "");
-            let remaining2 = Object.keys(savedAns).some(k => k.startsWith('ans2-') && parseInt(k.split('-')[1]) < currentCol && savedAns[k] !== "");
-            let remainingCarry = Object.keys(addCarries).some(k => parseInt(k) < currentCol);
-            isFinalDigit = !remaining1 && !remaining2 && !remainingCarry;
+            let hasMoreAhead = false;
+            for(let i=1; i<currentCol; i++){
+                if(savedAns['ans1-'+i] || savedAns['ans2-'+i] || addCarries[i]) hasMoreAhead = true;
+            }
+            isFinalDigit = !hasMoreAhead;
         } else {
             isFinalDigit = (topNums.slice(0, currentCol).join('').trim().length === 0);
         }
@@ -164,7 +164,7 @@
                 else multCarries[currentCol-1] = carry;
                 finalize(pendingVal % 10);
                 exitSubStep();
-            } else { document.getElementById('msg').innerText = `You should carry the ${carry}.`; }
+            } else { document.getElementById('msg').innerText = `Carry the ${carry}.`; }
         } else if(subStepMode === "placeholder"){
             if(sVal === 0){
                 savedAns['ans2-'+(maxCols-1)] = "0";
@@ -177,33 +177,33 @@
     function finalize(v){
         let rowTag = (phase==='add') ? 'fin-' : 'ans'+currentRow+'-';
         if(v >= 10){
-            savedAns[rowTag+currentCol] = v % 10;
-            savedAns[rowTag+(currentCol-1)] = Math.floor(v/10);
-        } else { savedAns[rowTag+currentCol] = v.toString(); }
+            savedAns[rowTag+currentCol] = (v % 10).toString();
+            savedAns[rowTag+(currentCol-1)] = Math.floor(v/10).toString();
+        } else { 
+            savedAns[rowTag+currentCol] = v.toString(); 
+        }
         
         renderGrid();
 
-        // Re-check for end of phase
-        let more;
+        let more = false;
         if(phase==='work'){
             more = (topNums.slice(0, currentCol).join('').trim().length > 0);
         } else {
-            let hasMoreDigits = false;
             for(let i=1; i<currentCol; i++){
-                if(savedAns['ans1-'+i] || savedAns['ans2-'+i] || addCarries[i]) hasMoreDigits = true;
+                if(savedAns['ans1-'+i] || savedAns['ans2-'+i] || addCarries[i]) more = true;
             }
-            more = hasMoreDigits;
         }
 
-        if(!more) { handleEndOfRow(); } 
-        else {
+        if(!more) { 
+            handleEndOfPhase();
+        } else {
             currentCol--;
             activeCarry = (phase === 'add') ? (addCarries[currentCol] || 0) : (multCarries[currentCol] || 0);
             refreshPrompt();
         }
     }
 
-    function handleEndOfRow(){
+    function handleEndOfPhase(){
         if(currentRow===1 && botNums.filter(x=>x!==' ').length > 1){
             subStepMode="placeholder";
             triggerSubStep("Place your placeholder zero.");
